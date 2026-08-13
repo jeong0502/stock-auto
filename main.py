@@ -1,14 +1,14 @@
 import os
+import traceback
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="TradingView to KIS Auto-Trader (Universal)")
+app = FastAPI(title="TradingView to KIS Auto-Trader (Debug)")
 
-# 환경 변수 로드
 BASE_URL = os.getenv("KIS_BASE_URL", "https://openapi.koreainvestment.com:9443")
 APP_KEY = os.getenv("APP_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
@@ -16,9 +16,9 @@ CANO = os.getenv("CANO")
 ACNT_PRDT_CD = os.getenv("ACNT_PRDT_CD")
 
 class WebhookSignal(BaseModel):
-    action: str  # "buy" 또는 "sell"
+    action: str
     ticker: str
-    exchange: str  # 트레이딩뷰에서 보내는 거래소 (NYSE, NASD, AMEX 등)
+    exchange: str
     price: float
     qty: int
 
@@ -30,6 +30,7 @@ async def get_access_token() -> str:
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=body, headers=headers)
         if response.status_code != 200:
+            print(f"토큰 발급 에러 응답: {response.text}")
             raise HTTPException(status_code=500, detail=f"토큰 발급 실패: {response.text}")
         return response.json().get("access_token")
 
@@ -37,11 +38,9 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
     token = await get_access_token()
     tr_id = "JTTT1002U" if action.lower() == "buy" else "JTTT1001U"
     
-    # 한국투자증권 거래소 코드 매핑
-    # TV(트레이딩뷰) 거래소명 -> KIS(한투) 거래소 코드
     ex_map = {"NYSE": "NYSE", "NASD": "NASD", "NASDAQ": "NASD", "AMEX": "AMEX"}
-    kis_exchange = ex_map.get(exchange.upper(), "NASD") # 기본값 NASD
-    
+    kis_exchange = ex_map.get(exchange.upper(), "NASD")
+
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
     headers = {
         "content-type": "application/json",
@@ -64,13 +63,17 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
     
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=body, headers=headers)
+        print(f"KIS 주문 응답 코드: {response.status_code}, 내용: {response.text}")
         if response.status_code != 200:
             raise HTTPException(status_code=500, detail=f"주문 전송 실패: {response.text}")
         return response.json()
 
 @app.post("/webhook")
-async def tradingview_webhook(signal: WebhookSignal):
+async def tradingview_webhook(request: Request, signal: WebhookSignal):
     try:
+        # 트레이딩뷰에서 실제로 어떤 데이터가 들어왔는지 로그에 출력
+        print(f"수신된 웹훅 데이터: action={signal.action}, ticker={signal.ticker}, exchange={signal.exchange}, price={signal.price}, qty={signal.qty}")
+        
         result = await send_overseas_order(
             action=signal.action,
             ticker=signal.ticker,
@@ -80,8 +83,11 @@ async def tradingview_webhook(signal: WebhookSignal):
         )
         return {"status": "success", "ticker": signal.ticker, "kis_response": result}
     except Exception as e:
+        # 에러가 나면 콘솔(Render 로그)에 정확한 원인과 스택트레이스를 출력
+        print("====== 웹훅 처리 중 에러 발생 ======")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def health_check():
-    return {"status": "running", "target": "Universal Auto-Trader"}
+    return {"status": "running", "target": "Universal Auto-Trader Debug"}
