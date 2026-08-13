@@ -5,9 +5,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-app = FastAPI(title="TradingView to KIS Auto-Trader (Real Only)")
+app = FastAPI(title="TradingView to KIS Real-Only Final")
 
-# 실전투자 서버 주소 고정
 BASE_URL = "https://openapi.koreainvestment.com:9443"
 APP_KEY = os.getenv("APP_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
@@ -44,8 +43,8 @@ async def get_access_token() -> str:
 async def send_overseas_order(action: str, ticker: str, exchange: str, price: float, qty: int) -> dict:
     token = await get_access_token()
     
-    # 무조건 실전용 TR_ID 사용 (매수: JTTT1002U, 매도: JTTT1001U)
-    tr_id = "JTTT1002U" if action.lower() == "buy" else "JTTT1001U"
+    # [최신 실전 TR_ID 반영] 해외주식 실전 매수/매도 표준 TR ID
+    tr_id = "TTTS1002U" if action.lower() == "buy" else "TTTS1001U"
     
     ex_map = {"NYSE": "NYSE", "NASD": "NASD", "NASDAQ": "NASD", "AMEX": "AMEX", "BATS": "NASD"}
     kis_exchange = ex_map.get(exchange.upper(), "NASD")
@@ -56,7 +55,8 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
-        "tr_id": tr_id
+        "tr_id": tr_id,
+        "custtype": "P"
     }
     
     body = {
@@ -80,7 +80,6 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
 @app.post("/webhook")
 async def tradingview_webhook(signal: WebhookSignal):
     try:
-        print(f"수신 데이터 -> action: {signal.action}, ticker: {signal.ticker}, price: {signal.price}, qty: {signal.qty}")
         result = await send_overseas_order(
             action=signal.action, ticker=signal.ticker, 
             exchange=signal.exchange, price=signal.price, qty=signal.qty
@@ -92,4 +91,4 @@ async def tradingview_webhook(signal: WebhookSignal):
 
 @app.get("/")
 def health_check():
-    return {"status": "running", "target": "Real-Only Auto-Trader"}
+    return {"status": "running"}
