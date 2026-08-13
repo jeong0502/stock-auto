@@ -68,27 +68,38 @@ class WebhookSignal(BaseModel):
 
 
 # =========================================================
-# 종목별 KIS 거래소 지정
+# 종목별 KIS 거래소 매핑
 #
 # 중요:
-# TradingView의 BATS / ARCA를 보고
-# 임의로 NYSE라고 판단하지 않는다.
+# TradingView의 {{exchange}} 값을 그대로 KIS에 보내지 않는다.
 #
-# KIS에서 실제로 거래할 종목의 KIS 거래소를
-# 명시적으로 관리한다.
+# TradingView:
+#   SOXL -> BATS 또는 기타 코드
 #
-# 아래 종목들은 현재 NASD 대상으로 설정.
+# KIS:
+#   SOXL -> AMEX
+#
+# TradingView:
+#   TQQQ -> BATS 등
+#
+# KIS:
+#   TQQQ -> NASD
+#
 # =========================================================
 
 SYMBOL_EXCHANGE_MAP = {
 
-    # 반도체 3배 ETF
-    "SOXL": "NASD",
+    # -----------------------------------------------------
+    # AMEX / NYSE Arca 계열
+    # -----------------------------------------------------
 
-    # 나스닥 3배 ETF
+    "SOXL": "AMEX",
+
+    # -----------------------------------------------------
+    # NASDAQ 계열
+    # -----------------------------------------------------
+
     "TQQQ": "NASD",
-
-    # 나스닥 종목
     "NVDA": "NASD",
     "AAPL": "NASD",
     "MSFT": "NASD",
@@ -98,19 +109,11 @@ SYMBOL_EXCHANGE_MAP = {
     "GOOG": "NASD",
     "TSLA": "NASD",
 
-    # 필요하면 여기에 계속 추가
-    #
-    # "SPY": "AMEX",
-    # "QQQ": "NASD",
-    # "DIA": "AMEX",
-    #
-    # 단, 거래소는 KIS 종목정보 기준으로
-    # 확인한 뒤 추가할 것.
 }
 
 
 # =========================================================
-# TradingView 거래소 코드 정규화
+# TradingView 거래소 코드 정리
 # =========================================================
 
 def normalize_tradingview_exchange(exchange: str) -> str:
@@ -122,19 +125,17 @@ def normalize_tradingview_exchange(exchange: str) -> str:
 
     exchange_map = {
 
-        # NASDAQ 계열
         "NASDAQ": "NASD",
         "NASD": "NASD",
 
-        # NYSE
         "NYSE": "NYSE",
 
-        # AMEX
         "AMEX": "AMEX",
 
-        # TradingView에서 발생할 수 있는 코드
         "BATS": "BATS",
+
         "ARCA": "ARCA",
+
         "NYSEARCA": "ARCA",
     }
 
@@ -157,8 +158,9 @@ def get_kis_exchange(
     )
 
     # -----------------------------------------------------
-    # 1. 종목별 KIS 거래소가 지정되어 있으면
-    #    TradingView exchange보다 이것을 우선한다.
+    # 1. 종목별 매핑을 최우선으로 사용
+    #
+    # TradingView exchange보다 우선한다.
     # -----------------------------------------------------
 
     if ticker in SYMBOL_EXCHANGE_MAP:
@@ -174,11 +176,15 @@ def get_kis_exchange(
         return kis_exchange
 
     # -----------------------------------------------------
-    # 2. TradingView가 KIS와 동일하게 명확한 코드를
-    #    보내는 경우
+    # 2. TradingView에서 KIS와 동일한 거래소 코드가
+    #    들어온 경우
     # -----------------------------------------------------
 
-    if tv_exchange in ["NASD", "NYSE", "AMEX"]:
+    if tv_exchange in [
+        "NASD",
+        "NYSE",
+        "AMEX"
+    ]:
 
         print(
             f"거래소 결정: "
@@ -189,26 +195,24 @@ def get_kis_exchange(
         return tv_exchange
 
     # -----------------------------------------------------
-    # 3. BATS / ARCA는 임의로 거래소를 결정하지 않는다.
+    # 3. BATS / ARCA인데 등록되지 않은 종목
     #
-    # 예:
-    # BATS -> NASD
-    # BATS -> NYSE
-    #
-    # 이런 식으로 무조건 변환하면 잘못된 주문이
-    # 발생할 수 있다.
+    # 절대로 임의로 NASD/NYSE로 보내지 않는다.
     # -----------------------------------------------------
 
-    if tv_exchange in ["BATS", "ARCA"]:
+    if tv_exchange in [
+        "BATS",
+        "ARCA"
+    ]:
 
         raise HTTPException(
             status_code=400,
             detail=(
-                f"KIS 거래소를 자동 결정할 수 없습니다. "
+                f"거래소 매핑이 필요합니다. "
                 f"ticker={ticker}, "
                 f"TradingView exchange={tradingview_exchange}. "
                 f"SYMBOL_EXCHANGE_MAP에 "
-                f"'{ticker}'의 KIS 거래소를 추가하세요."
+                f"'{ticker}'를 등록하세요."
             )
         )
 
@@ -227,7 +231,7 @@ def get_kis_exchange(
 
 
 # =========================================================
-# 미국주식 TR ID
+# KIS 미국주식 TR ID
 # =========================================================
 
 def get_order_tr_id(action: str) -> str:
@@ -238,23 +242,21 @@ def get_order_tr_id(action: str) -> str:
 
         return "TTTT1002U"
 
-    elif action == "sell":
+    if action == "sell":
 
         return "TTTT1006U"
 
-    else:
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"지원하지 않는 action: {action}. "
-                f"buy 또는 sell만 가능합니다."
-            )
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"지원하지 않는 action: {action}. "
+            f"buy 또는 sell만 가능합니다."
         )
+    )
 
 
 # =========================================================
-# KIS Access Token
+# Access Token 발급
 # =========================================================
 
 async def get_access_token() -> str:
@@ -262,13 +264,14 @@ async def get_access_token() -> str:
     global token_cache
 
     # -----------------------------------------------------
-    # 기존 토큰 사용
+    # 캐시된 토큰 사용
     # -----------------------------------------------------
 
     if (
         token_cache["access_token"]
         and time.time() < token_cache["expires_at"]
     ):
+
         return token_cache["access_token"]
 
     # -----------------------------------------------------
@@ -283,7 +286,9 @@ async def get_access_token() -> str:
         "appsecret": APP_SECRET,
     }
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(
+        timeout=20.0
+    ) as client:
 
         response = await client.post(
             url,
@@ -295,7 +300,7 @@ async def get_access_token() -> str:
         raise HTTPException(
             status_code=500,
             detail=(
-                f"KIS 토큰 발급 HTTP 오류: "
+                f"KIS 토큰 발급 실패: "
                 f"{response.status_code} "
                 f"{response.text}"
             )
@@ -310,7 +315,7 @@ async def get_access_token() -> str:
         raise HTTPException(
             status_code=500,
             detail=(
-                f"KIS 토큰 응답 파싱 실패: "
+                f"KIS 토큰 응답 JSON 오류: "
                 f"{response.text}"
             )
         )
@@ -329,7 +334,7 @@ async def get_access_token() -> str:
 
     token_cache["access_token"] = access_token
 
-    # 11시간 캐시
+    # 약 11시간 캐시
     token_cache["expires_at"] = (
         time.time() + 11 * 60 * 60
     )
@@ -352,7 +357,7 @@ async def send_overseas_order(
 ) -> dict:
 
     # -----------------------------------------------------
-    # 문자열 정리
+    # 입력값 정리
     # -----------------------------------------------------
 
     action = action.strip().lower()
@@ -373,14 +378,14 @@ async def send_overseas_order(
 
         raise HTTPException(
             status_code=400,
-            detail=f"잘못된 주문 수량: {qty}"
+            detail=f"주문 수량이 올바르지 않습니다: {qty}"
         )
 
     if price <= 0:
 
         raise HTTPException(
             status_code=400,
-            detail=f"잘못된 주문 가격: {price}"
+            detail=f"주문 가격이 올바르지 않습니다: {price}"
         )
 
     # -----------------------------------------------------
@@ -405,13 +410,17 @@ async def send_overseas_order(
     token = await get_access_token()
 
     # -----------------------------------------------------
-    # 주문 API
+    # KIS 주문 URL
     # -----------------------------------------------------
 
     url = (
         f"{BASE_URL}"
         f"/uapi/overseas-stock/v1/trading/order"
     )
+
+    # -----------------------------------------------------
+    # Header
+    # -----------------------------------------------------
 
     headers = {
 
@@ -441,7 +450,7 @@ async def send_overseas_order(
     order_price = f"{price:.2f}"
 
     # -----------------------------------------------------
-    # 주문 BODY
+    # 주문 Body
     # -----------------------------------------------------
 
     body = {
@@ -472,7 +481,7 @@ async def send_overseas_order(
     }
 
     # -----------------------------------------------------
-    # 주문 요청 로그
+    # 주문 전송 로그
     # -----------------------------------------------------
 
     print("")
@@ -489,10 +498,12 @@ async def send_overseas_order(
     print("========================================")
 
     # -----------------------------------------------------
-    # KIS 주문
+    # 주문 전송
     # -----------------------------------------------------
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(
+        timeout=20.0
+    ) as client:
 
         response = await client.post(
             url,
@@ -501,7 +512,7 @@ async def send_overseas_order(
         )
 
     # -----------------------------------------------------
-    # HTTP 응답 로그
+    # 응답 로그
     # -----------------------------------------------------
 
     print(
@@ -515,7 +526,7 @@ async def send_overseas_order(
     )
 
     # -----------------------------------------------------
-    # HTTP 오류
+    # HTTP 상태 확인
     # -----------------------------------------------------
 
     if response.status_code != 200:
@@ -530,7 +541,7 @@ async def send_overseas_order(
         )
 
     # -----------------------------------------------------
-    # JSON 파싱
+    # JSON 변환
     # -----------------------------------------------------
 
     try:
@@ -542,30 +553,33 @@ async def send_overseas_order(
         raise HTTPException(
             status_code=500,
             detail=(
-                f"KIS JSON 파싱 실패: "
+                f"KIS JSON 응답 파싱 실패: "
                 f"{response.text}"
             )
         )
 
     # -----------------------------------------------------
-    # KIS 업무 처리 결과
+    # KIS 업무 처리 결과 확인
     #
-    # HTTP 200 != 주문 성공
+    # HTTP 200이어도 주문 성공이 아닐 수 있다.
     #
-    # rt_cd == "0"이어야 성공
+    # rt_cd == "0"만 성공
     # -----------------------------------------------------
 
     if data.get("rt_cd") != "0":
 
-        msg_cd = data.get("msg_cd", "")
-        msg1 = data.get("msg1", "")
-
         print("")
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         print("KIS 주문 실패")
-        print(f"rt_cd : {data.get('rt_cd')}")
-        print(f"msg_cd: {msg_cd}")
-        print(f"msg1  : {msg1}")
+        print(
+            f"rt_cd : {data.get('rt_cd')}"
+        )
+        print(
+            f"msg_cd: {data.get('msg_cd')}"
+        )
+        print(
+            f"msg1  : {data.get('msg1')}"
+        )
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         print("")
 
@@ -574,8 +588,8 @@ async def send_overseas_order(
             detail=(
                 f"KIS 주문 실패 | "
                 f"rt_cd={data.get('rt_cd')} | "
-                f"msg_cd={msg_cd} | "
-                f"msg1={msg1}"
+                f"msg_cd={data.get('msg_cd')} | "
+                f"msg1={data.get('msg1')}"
             )
         )
 
@@ -586,6 +600,7 @@ async def send_overseas_order(
     print("")
     print("========================================")
     print("KIS 주문 성공")
+    print("========================================")
     print(data)
     print("========================================")
     print("")
@@ -629,21 +644,16 @@ async def tradingview_webhook(
             qty=signal.qty,
         )
 
-        # 여기까지 왔다는 것은
-        # KIS rt_cd == "0"이라는 의미
+        # KIS rt_cd == "0"일 때만 성공 응답
 
         return {
-
             "status": "success",
-
-            "result": result,
+            "result": result
         }
 
     except HTTPException:
 
-        # 이미 만들어진 HTTPException을
-        # 그대로 전달
-
+        # 이미 만들어진 오류를 그대로 전달
         raise
 
     except Exception as e:
@@ -651,9 +661,7 @@ async def tradingview_webhook(
         traceback.print_exc()
 
         raise HTTPException(
-
             status_code=500,
-
             detail=f"서버 내부 오류: {str(e)}"
         )
 
@@ -666,9 +674,6 @@ async def tradingview_webhook(
 def health_check():
 
     return {
-
         "status": "running",
-
-        "mode": "REAL",
-
+        "mode": "REAL"
     }
