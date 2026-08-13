@@ -5,10 +5,11 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-app = FastAPI(title="TradingView to KIS Auto-Trader (Final)")
+app = FastAPI(title="TradingView to KIS Auto-Trader (Force Real Fixed)")
 
-# 환경 변수에서 설정값을 가져옴 (Render 환경 변수에 설정된 값 사용)
-BASE_URL = os.getenv("KIS_BASE_URL", "https://openapi.koreainvestment.com:9443")
+# [강제 고정] 환경 변수와 상관없이 무조건 한국투자증권 실전 서버 주소 사용
+BASE_URL = "https://openapi.koreainvestment.com:9443"
+
 APP_KEY = os.getenv("APP_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
 CANO = os.getenv("CANO")
@@ -38,13 +39,13 @@ async def get_access_token() -> str:
         
         data = response.json()
         token_cache["access_token"] = data.get("access_token")
-        token_cache["expires_at"] = time.time() + 43200 # 12시간 캐싱
+        token_cache["expires_at"] = time.time() + 43200
         return token_cache["access_token"]
 
 async def send_overseas_order(action: str, ticker: str, exchange: str, price: float, qty: int) -> dict:
     token = await get_access_token()
     
-    # 실전용 TR_ID 강제 고정 (JTTT)
+    # 실전 해외주식 매수/매도 TR_ID 강제 지정
     tr_id = "JTTT1002U" if action.lower() == "buy" else "JTTT1001U"
     
     ex_map = {"NYSE": "NYSE", "NASD": "NASD", "NASDAQ": "NASD", "AMEX": "AMEX", "BATS": "NASD"}
@@ -90,4 +91,4 @@ async def tradingview_webhook(signal: WebhookSignal):
 
 @app.get("/")
 def health_check():
-    return {"status": "running", "target": "Universal Auto-Trader Final"}
+    return {"status": "running", "target": "Universal Auto-Trader Force Real"}
