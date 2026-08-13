@@ -5,11 +5,10 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-app = FastAPI(title="TradingView to KIS Auto-Trader (Force Real Fixed)")
+app = FastAPI(title="TradingView to KIS Auto-Trader")
 
-# [강제 고정] 환경 변수와 상관없이 무조건 한국투자증권 실전 서버 주소 사용
-BASE_URL = "https://openapi.koreainvestment.com:9443"
-
+# 환경 변수에서 KIS_BASE_URL을 읽어오되, 없으면 실전 주소를 기본값으로 사용
+BASE_URL = os.getenv("KIS_BASE_URL", "https://openapi.koreainvestment.com:9443")
 APP_KEY = os.getenv("APP_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
 CANO = os.getenv("CANO")
@@ -45,8 +44,12 @@ async def get_access_token() -> str:
 async def send_overseas_order(action: str, ticker: str, exchange: str, price: float, qty: int) -> dict:
     token = await get_access_token()
     
-    # 실전 해외주식 매수/매도 TR_ID 강제 지정
-    tr_id = "JTTT1002U" if action.lower() == "buy" else "JTTT1001U"
+    # URL에 vts(모의)가 포함되어 있는지 여부로 실전/모의 TR_ID 자동 판별
+    is_vts = "vts" in BASE_URL.lower()
+    if is_vts:
+        tr_id = "VTTS1002U" if action.lower() == "buy" else "VTTS1001U"
+    else:
+        tr_id = "JTTT1002U" if action.lower() == "buy" else "JTTT1001U"
     
     ex_map = {"NYSE": "NYSE", "NASD": "NASD", "NASDAQ": "NASD", "AMEX": "AMEX", "BATS": "NASD"}
     kis_exchange = ex_map.get(exchange.upper(), "NASD")
@@ -91,4 +94,4 @@ async def tradingview_webhook(signal: WebhookSignal):
 
 @app.get("/")
 def health_check():
-    return {"status": "running", "target": "Universal Auto-Trader Force Real"}
+    return {"status": "running", "target": "Universal Auto-Trader"}
