@@ -5,9 +5,10 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-app = FastAPI(title="TradingView to KIS Auto-Trader (Official Spec)")
+app = FastAPI(title="TradingView to KIS Auto-Trader (Real Only)")
 
-BASE_URL = os.getenv("KIS_BASE_URL", "https://openapi.koreainvestment.com:9443")
+# 실전투자 서버 주소 고정
+BASE_URL = "https://openapi.koreainvestment.com:9443"
 APP_KEY = os.getenv("APP_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
 CANO = os.getenv("CANO")
@@ -43,14 +44,9 @@ async def get_access_token() -> str:
 async def send_overseas_order(action: str, ticker: str, exchange: str, price: float, qty: int) -> dict:
     token = await get_access_token()
     
-    # 실전/모의 자동 분기 TR_ID
-    is_vts = "vts" in BASE_URL.lower()
-    if is_vts:
-        tr_id = "VTTS1002U" if action.lower() == "buy" else "VTTS1001U"
-    else:
-        tr_id = "JTTT1002U" if action.lower() == "buy" else "JTTT1001U"
+    # 무조건 실전용 TR_ID 사용 (매수: JTTT1002U, 매도: JTTT1001U)
+    tr_id = "JTTT1002U" if action.lower() == "buy" else "JTTT1001U"
     
-    # 공식 API 거래소 코드 매핑 (미국: NASD, NYSE 등)
     ex_map = {"NYSE": "NYSE", "NASD": "NASD", "NASDAQ": "NASD", "AMEX": "AMEX", "BATS": "NASD"}
     kis_exchange = ex_map.get(exchange.upper(), "NASD")
 
@@ -63,13 +59,12 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
         "tr_id": tr_id
     }
     
-    # [핵심 수정] 공식 샘플 규격에 맞춘 body 구조 (ORD_SVR_DVSN_CD 빈 값 처리)
     body = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT_PRDT_CD,
         "OVRS_EXCG_CD": kis_exchange,
         "PDNO": ticker.upper(),
-        "ORD_SVR_DVSN_CD": "", 
+        "ORD_SVR_DVSN_CD": "",
         "ORD_QTY": str(qty),
         "OVRS_ORD_UNPR": str(price),
         "ORD_DVSN": "00"
@@ -97,4 +92,4 @@ async def tradingview_webhook(signal: WebhookSignal):
 
 @app.get("/")
 def health_check():
-    return {"status": "running", "target": "Official Spec Auto-Trader"}
+    return {"status": "running", "target": "Real-Only Auto-Trader"}
