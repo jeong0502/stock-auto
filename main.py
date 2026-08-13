@@ -5,7 +5,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-app = FastAPI(title="TradingView to KIS Real-Only Final")
+app = FastAPI(title="TradingView to KIS Real-Only Fixed")
 
 BASE_URL = "https://openapi.koreainvestment.com:9443"
 APP_KEY = os.getenv("APP_KEY")
@@ -43,7 +43,6 @@ async def get_access_token() -> str:
 async def send_overseas_order(action: str, ticker: str, exchange: str, price: float, qty: int) -> dict:
     token = await get_access_token()
     
-    # [최신 실전 TR_ID 반영] 해외주식 실전 매수/매도 표준 TR ID
     tr_id = "TTTS1002U" if action.lower() == "buy" else "TTTS1001U"
     
     ex_map = {"NYSE": "NYSE", "NASD": "NASD", "NASDAQ": "NASD", "AMEX": "AMEX", "BATS": "NASD"}
@@ -59,12 +58,13 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
         "custtype": "P"
     }
     
+    # [핵심 수정] ORD_SVR_DVSN_CD를 빈 값이 아닌 "0"으로 설정
     body = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT_PRDT_CD,
         "OVRS_EXCG_CD": kis_exchange,
         "PDNO": ticker.upper(),
-        "ORD_SVR_DVSN_CD": "",
+        "ORD_SVR_DVSN_CD": "0", 
         "ORD_QTY": str(qty),
         "OVRS_ORD_UNPR": str(price),
         "ORD_DVSN": "00"
