@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="TradingView to KIS Auto-Trader (Optimized)")
+app = FastAPI(title="TradingView to KIS Auto-Trader (Final)")
 
 BASE_URL = os.getenv("KIS_BASE_URL", "https://openapi.koreainvestment.com:9443")
 APP_KEY = os.getenv("APP_KEY")
@@ -16,7 +16,6 @@ APP_SECRET = os.getenv("APP_SECRET")
 CANO = os.getenv("CANO")
 ACNT_PRDT_CD = os.getenv("ACNT_PRDT_CD")
 
-# 토큰 캐싱을 위한 전역 변수
 token_cache = {
     "access_token": None,
     "expires_at": 0
@@ -33,7 +32,6 @@ async def get_access_token() -> str:
     global token_cache
     current_time = time.time()
     
-    # 토큰이 남아있고 만료 시간 전이면 기존 토큰 재사용 (1분 제한 방지)
     if token_cache["access_token"] and current_time < token_cache["expires_at"]:
         return token_cache["access_token"]
 
@@ -49,21 +47,19 @@ async def get_access_token() -> str:
         
         data = response.json()
         token_cache["access_token"] = data.get("access_token")
-        # 한투 토큰 유효기간은 보통 24시간이나 안전하게 12시간(43200초)으로 설정 후 재발급
         token_cache["expires_at"] = current_time + 43200
         return token_cache["access_token"]
 
 async def send_overseas_order(action: str, ticker: str, exchange: str, price: float, qty: int) -> dict:
     token = await get_access_token()
     
-    # 실전(openapi) vs 모의(openapivts) 주소 여부에 따른 TR_ID 설정
-    is_vts = "vts" in BASE_URL
+    # [핵심 수정] 실전/모의 서버 주소에 따라 TR_ID 자동 분기 (EGW00356 에러 원인 차단)
+    is_vts = "vts" in BASE_URL.lower()
     if is_vts:
         tr_id = "VTTS1002U" if action.lower() == "buy" else "VTTS1001U"
     else:
         tr_id = "JTTT1002U" if action.lower() == "buy" else "JTTT1001U"
     
-    # 거래소 매핑 (트레이딩뷰 exchange가 BATS 등 다양하게 들어올 경우 NASD/NYSE로 안전하게 정렬)
     ex_map = {"NYSE": "NYSE", "NASD": "NASD", "NASDAQ": "NASD", "AMEX": "AMEX", "BATS": "NASD"}
     kis_exchange = ex_map.get(exchange.upper(), "NASD")
 
@@ -114,4 +110,4 @@ async def tradingview_webhook(request: Request, signal: WebhookSignal):
 
 @app.get("/")
 def health_check():
-    return {"status": "running", "target": "Universal Auto-Trader Optimized"}
+    return {"status": "running", "target": "Universal Auto-Trader Final"}
