@@ -5,7 +5,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-app = FastAPI(title="TradingView to KIS Real-Only Fixed")
+app = FastAPI(title="TradingView to KIS Real-Only Final")
 
 BASE_URL = "https://openapi.koreainvestment.com:9443"
 APP_KEY = os.getenv("APP_KEY")
@@ -45,8 +45,16 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
     
     tr_id = "TTTS1002U" if action.lower() == "buy" else "TTTS1001U"
     
-    ex_map = {"NYSE": "NYSE", "NASD": "NASD", "NASDAQ": "NASD", "AMEX": "AMEX", "BATS": "NASD"}
-    kis_exchange = ex_map.get(exchange.upper(), "NASD")
+    # KIS 표준 해외 거래소 코드 정규화 (NASD, NYSE, AMEX)
+    ex_upper = exchange.upper()
+    if ex_upper in ["NASDAQ", "NASD"]:
+        kis_exchange = "NASD"
+    elif ex_upper in ["NYSE"]:
+        kis_exchange = "NYSE"
+    elif ex_upper in ["AMEX"]:
+        kis_exchange = "AMEX"
+    else:
+        kis_exchange = "NASD"
 
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
     headers = {
@@ -58,15 +66,14 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
         "custtype": "P"
     }
     
-    # [핵심 수정] ORD_SVR_DVSN_CD를 빈 값이 아닌 "0"으로 설정
     body = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT_PRDT_CD,
         "OVRS_EXCG_CD": kis_exchange,
-        "PDNO": ticker.upper(),
+        "PDNO": ticker.strip().upper(),
         "ORD_SVR_DVSN_CD": "0", 
-        "ORD_QTY": str(qty),
-        "OVRS_ORD_UNPR": str(price),
+        "ORD_QTY": str(int(qty)),
+        "OVRS_ORD_UNPR": str(round(price, 2)),
         "ORD_DVSN": "00"
     }
     
@@ -80,6 +87,7 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
 @app.post("/webhook")
 async def tradingview_webhook(signal: WebhookSignal):
     try:
+        print(f"수신 데이터 -> action: {signal.action}, ticker: {signal.ticker}, exchange: {signal.exchange}, price: {signal.price}, qty: {signal.qty}")
         result = await send_overseas_order(
             action=signal.action, ticker=signal.ticker, 
             exchange=signal.exchange, price=signal.price, qty=signal.qty
