@@ -45,15 +45,15 @@ async def send_overseas_order(action: str, ticker: str, exchange: str, price: fl
     
     tr_id = "TTTS1002U" if action.lower() == "buy" else "TTTS1001U"
     
-    # [핵심 수정] BATS, ARCA 등 생소한 거래소 코드가 오면 미국 주식 표준(NASD)으로 강제 변환
+    # [거래소 매핑 수정] BATS 등 트레이딩뷰에서 흔히 잡히는 BATS/ARCA 계열은 NYSE로 처리
     ex_upper = exchange.upper()
-    if ex_upper in ["NYSE"]:
-        kis_exchange = "NYSE"
+    if ex_upper in ["NASD", "NASDAQ"]:
+        kis_exchange = "NASD"
     elif ex_upper in ["AMEX"]:
         kis_exchange = "AMEX"
     else:
-        # BATS, NASDAQ, NASD 등 나머지는 모두 한국투자증권이 인식하는 NASD로 처리
-        kis_exchange = "NASD"
+        # BATS 및 기타 거래소는 SOXL 등 NYSE 상장 ETF를 위해 NYSE로 강제 매핑
+        kis_exchange = "NYSE"
 
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
     headers = {
